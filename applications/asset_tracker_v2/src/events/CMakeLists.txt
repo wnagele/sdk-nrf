@@ -14,5 +14,4 @@ target_sources(app PRIVATE
 	       ${CMAKE_CURRENT_SOURCE_DIR}/ui_module_event.c
 	       ${CMAKE_CURRENT_SOURCE_DIR}/debug_module_event.c
 	       ${CMAKE_CURRENT_SOURCE_DIR}/util_module_event.c
-	       ${CMAKE_CURRENT_SOURCE_DIR}/led_state_event.c
 )

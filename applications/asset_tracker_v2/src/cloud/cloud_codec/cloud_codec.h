@@ -18,12 +18,6 @@
 #include <net/wifi_location_common.h>
 #include <nrf_modem_gnss.h>
 
-#if defined(CONFIG_LWM2M)
-#include <zephyr/net/lwm2m.h>
-#else
-#include "lwm2m/lwm2m_dummy.h"
-#endif
-
 /**@file
  *
  * @defgroup cloud_codec Cloud codec.
@@ -72,20 +66,6 @@ struct cloud_data_gnss {
 	bool queued : 1;
 };
 
-/** Structure containing boolean variables used to enable/disable inclusion of the corresponding
- *  data type in sample requests sent out by the application module.
- */
-struct cloud_data_no_data {
-	/** If this flag is set GNSS data is not included in sample requests. */
-	bool gnss;
-
-	/** If this flag is set neighbor cell data is not included sample requests. */
-	bool neighbor_cell;
-
-	/** If this flag is set Wi-Fi data is not included in sample requests. */
-	bool wifi;
-};
-
 struct cloud_data_cfg {
 	/** Device mode. */
 	bool active_mode;
@@ -105,35 +85,6 @@ struct cloud_data_cfg {
 	double accelerometer_inactivity_threshold;
 	/** Accelerometer inactivity-trigger timeout value in seconds. */
 	double accelerometer_inactivity_timeout;
-	/** Variable used to govern what data types are requested by the application. */
-	struct cloud_data_no_data no_data;
-};
-
-/** Structure containing the magnitude of an impact event detected by the high-G Accelerometer. */
-struct cloud_data_impact {
-	/** Impact timestamp. UNIX milliseconds. */
-	int64_t ts;
-	/** Impact magnitude in G. */
-	double magnitude;
-	/** Flag signifying that the data entry is to be published. */
-	bool queued : 1;
-};
-
-struct cloud_data_sensors {
-	/** Environmental sensors timestamp. UNIX milliseconds. */
-	int64_t env_ts;
-	/** Temperature in celcius. */
-	double temperature;
-	/** Humidity level in percentage. */
-	double humidity;
-	/** Atmospheric pressure in kilopascal. */
-	double pressure;
-	/** BSEC Air quality in Indoor-Air-Quality (IAQ) index.
-	 *  If -1, the value is not provided.
-	 */
-	int bsec_air_quality;
-	/** Flag signifying that the data entry is to be encoded. */
-	bool queued : 1;
 };
 
 struct cloud_data_modem_static {
@@ -194,10 +145,6 @@ struct cloud_codec_data {
 	char *buf;
 	/** Length of encoded output. */
 	size_t len;
-	/** LwM2M object paths. */
-	struct lwm2m_obj_path paths[CONFIG_CLOUD_CODEC_LWM2M_PATH_LIST_ENTRIES_MAX];
-	/** Number of valid paths in the paths variable. */
-	uint8_t valid_object_paths;
 };
 
 struct cloud_data_neighbor_cells {
@@ -302,10 +249,6 @@ int cloud_codec_init(struct cloud_data_cfg *cfg, cloud_codec_evt_handler_t event
 /**
  * @brief Encode cloud codec cloud location data.
  *
- * @note LwM2M builds: This function does not output a list of objects, unlike other
- *		       functions in this API. The object references that are required to update
- *		       Wi-Fi access points are kept internal in the LwM2M utils library.
- *
  * @param[out] output String buffer for encoding result.
  * @param[in] cloud_location Cloud location data.
  *
@@ -322,10 +265,6 @@ int cloud_codec_encode_cloud_location(
 /**
  * @brief Encode cloud codec A-GPS request.
  *
- * @note LwM2M builds: This function does not output a list of objects, unlike other
- *		       functions in this API. The object references that are required to update
- *		       A-GPS are kept internal in the LwM2M utils library.
- *
  * @param[out] output String buffer for encoding result.
  * @param[in] agps_request A-GPS request data.
  *
@@ -339,10 +278,6 @@ int cloud_codec_encode_agps_request(struct cloud_codec_data *output,
 
 /**
  * @brief Encode cloud codec P-GPS request.
- *
- * @note LwM2M builds: This function does not output a list of objects, unlike other
- *		       functions in this API. The object references that are required to update
- *		       P-GPS are kept internal in the LwM2M utils library.
  *
  * @param[out] output String buffer for encoding result.
  * @param[in] pgps_request P-GPS request data.
@@ -389,11 +324,9 @@ int cloud_codec_encode_config(struct cloud_codec_data *output,
  *
  * @param[out] output String buffer for encoding result.
  * @param[in] gnss_buf GNSS data.
- * @param[in] sensor_buf Sensor data.
  * @param[in] modem_stat_buf Static modem data.
  * @param[in] modem_dyn_buf Dynamic modem data.
  * @param[in] ui_buf Button data.
- * @param[in] impact_buf Impact data.
  * @param[in] bat_buf Battery data.
  *
  * @retval 0 on success.
@@ -404,11 +337,9 @@ int cloud_codec_encode_config(struct cloud_codec_data *output,
  */
 int cloud_codec_encode_data(struct cloud_codec_data *output,
 			    struct cloud_data_gnss *gnss_buf,
-			    struct cloud_data_sensors *sensor_buf,
 			    struct cloud_data_modem_static *modem_stat_buf,
 			    struct cloud_data_modem_dynamic *modem_dyn_buf,
 			    struct cloud_data_ui *ui_buf,
-			    struct cloud_data_impact *impact_buf,
 			    struct cloud_data_battery *bat_buf);
 
 /**
@@ -426,36 +357,18 @@ int cloud_codec_encode_ui_data(struct cloud_codec_data *output,
 			       struct cloud_data_ui *ui_buf);
 
 /**
- * @brief Encode impact data.
- *
- * @param[out] output String buffer for encoding result.
- * @param[in] impact_buf Impact data to encode.
- *
- * @retval 0 on success.
- * @retval -ENODATA if the data elements is not marked valid.
- * @retval -EINVAL if the data is invalid.
- * @retval -ENOMEM if codec couldn't allocate memory.
- */
-int cloud_codec_encode_impact_data(struct cloud_codec_data *output,
-				   struct cloud_data_impact *impact_buf);
-
-/**
  * @brief Encode a batch of cloud buffer data.
  *
  * @param[out] output string buffer for encoding result.
  * @param[in] gnss_buf GNSS data buffer.
- * @param[in] sensor_buf Sensor data buffer.
  * @param[in] modem_stat_buf Static modem data buffer.
  * @param[in] modem_dyn_buf Dynamic modem data buffer.
  * @param[in] ui_buf Button data buffer.
- * @param[in] impact_buf Impact data buffer.
  * @param[in] bat_buf Battery data buffer.
  * @param[in] gnss_buf_count Length of GNSS data buffer.
- * @param[in] sensor_buf_count Length of Sensor data buffer.
  * @param[in] modem_stat_buf_count Length of static modem data buffer.
  * @param[in] modem_dyn_buf_count Length of dynamic modem data buffer.
  * @param[in] ui_buf_count Length of button data buffer.
- * @param[in] impact_buf_count Length of impact data buffer.
  * @param[in] bat_buf_count Length of battery data buffer.
  *
  * @retval 0 on success.
@@ -466,36 +379,20 @@ int cloud_codec_encode_impact_data(struct cloud_codec_data *output,
  */
 int cloud_codec_encode_batch_data(struct cloud_codec_data *output,
 				  struct cloud_data_gnss *gnss_buf,
-				  struct cloud_data_sensors *sensor_buf,
 				  struct cloud_data_modem_static *modem_stat_buf,
 				  struct cloud_data_modem_dynamic *modem_dyn_buf,
 				  struct cloud_data_ui *ui_buf,
-				  struct cloud_data_impact *impact_buf,
 				  struct cloud_data_battery *bat_buf,
 				  size_t gnss_buf_count,
-				  size_t sensor_buf_count,
 				  size_t modem_stat_buf_count,
 				  size_t modem_dyn_buf_count,
 				  size_t ui_buf_count,
-				  size_t impact_buf_count,
 				  size_t bat_buf_count);
-
-void cloud_codec_populate_sensor_buffer(
-				struct cloud_data_sensors *sensor_buffer,
-				struct cloud_data_sensors *new_sensor_data,
-				int *head_sensor_buf,
-				size_t buffer_count);
 
 void cloud_codec_populate_ui_buffer(struct cloud_data_ui *ui_buffer,
 				    struct cloud_data_ui *new_ui_data,
 				    int *head_ui_buf,
 				    size_t buffer_count);
-
-void cloud_codec_populate_impact_buffer(
-				struct cloud_data_impact *impact_buf,
-				struct cloud_data_impact *new_impact_data,
-				int *head_impact_buf,
-				size_t buffer_count);
 
 void cloud_codec_populate_bat_buffer(struct cloud_data_battery *bat_buffer,
 				     struct cloud_data_battery *new_bat_data,

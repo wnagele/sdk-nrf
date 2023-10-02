@@ -21,15 +21,6 @@ extern "C" {
 #endif
 
 enum debug_module_event_type {
-	/** Event carrying Memfault data that should be forwarded via the configured cloud
-	 *  backend to Memfault cloud. Only sent if
-	 *  CONFIG_DEBUG_MODULE_MEMFAULT_USE_EXTERNAL_TRANSPORT is enabled.
-	 *  Payload is of type @ref debug_module_memfault_data.
-	 *
-	 *  The payload is heap allocated and must be freed after use.
-	 */
-	DEBUG_EVT_MEMFAULT_DATA_READY,
-
 	/** Event sent after boot when building for PC. This event acts as a placeholder for
 	 *  MODEM_EVT_INITIALIZED which is not sent due to the modem module being disabled for
 	 *  PC builds.
@@ -48,18 +39,12 @@ enum debug_module_event_type {
 	DEBUG_EVT_ERROR
 };
 
-struct debug_module_memfault_data {
-	uint8_t *buf;
-	size_t len;
-};
-
 /** @brief Debug event. */
 struct debug_module_event {
 	struct app_event_header header;
 	enum debug_module_event_type type;
 
 	union {
-		struct debug_module_memfault_data memfault;
 		/** Code signifying the cause of error. */
 		int err;
 	} data;

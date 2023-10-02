@@ -40,9 +40,6 @@ BUILD_ASSERT(CONFIG_CLOUD_CONNECT_RETRIES < 14,
 	     "Cloud connect retries too large");
 
 BUILD_ASSERT(IS_ENABLED(CONFIG_NRF_CLOUD_MQTT) ||
-	     IS_ENABLED(CONFIG_AWS_IOT)	       ||
-	     IS_ENABLED(CONFIG_AZURE_IOT_HUB)  ||
-	     IS_ENABLED(CONFIG_LWM2M_INTEGRATION),
 	     "A cloud transport service must be enabled");
 
 #if defined(CONFIG_BOARD_QEMU_X86) || defined(CONFIG_BOARD_NATIVE_POSIX)
@@ -109,7 +106,6 @@ enum {
 	AGPS_REQUEST,
 	PGPS_REQUEST,
 	CONFIG,
-	MEMFAULT,
 };
 
 /* Cloud module message queue. */
@@ -690,27 +686,7 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 		}
 	}
 
-	if (IS_EVENT(msg, debug, DEBUG_EVT_MEMFAULT_DATA_READY)) {
-		add_qos_message(msg->module.debug.data.memfault.buf,
-				msg->module.debug.data.memfault.len,
-				MEMFAULT,
-				QOS_FLAG_RELIABILITY_ACK_REQUIRED,
-				true);
-	}
-
 	if (IS_EVENT(msg, data, DATA_EVT_AGPS_REQUEST_DATA_SEND)) {
-
-		if (IS_ENABLED(CONFIG_LWM2M_INTEGRATION)) {
-			int err = cloud_wrap_agps_request_send(NULL,
-							       0,
-							       true,
-							       0);
-			if (err) {
-				LOG_ERR("cloud_wrap_agps_request_send, err: %d", err);
-			}
-
-			return;
-		}
 
 		add_qos_message(msg->module.data.data.buffer.buf,
 				msg->module.data.data.buffer.len,
@@ -720,30 +696,6 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 	}
 
 	if (IS_EVENT(msg, data, DATA_EVT_DATA_SEND)) {
-
-		if (IS_ENABLED(CONFIG_LWM2M_INTEGRATION)) {
-
-			struct lwm2m_obj_path paths[CONFIG_CLOUD_CODEC_LWM2M_PATH_LIST_ENTRIES_MAX];
-
-			__ASSERT(ARRAY_SIZE(paths) ==
-				 ARRAY_SIZE(msg->module.data.data.buffer.paths),
-				 "Path object list not the same size");
-
-			for (int i = 0; i < ARRAY_SIZE(paths); i++) {
-				paths[i] = msg->module.data.data.buffer.paths[i];
-			}
-
-			err = cloud_wrap_data_send(NULL,
-						   msg->module.data.data.buffer.valid_object_paths,
-						   true,
-						   0,
-						   paths);
-			if (err) {
-				LOG_ERR("cloud_wrap_data_send, err: %d", err);
-			}
-
-			return;
-		}
 
 		add_qos_message(msg->module.data.data.buffer.buf,
 				msg->module.data.data.buffer.len,
@@ -768,32 +720,7 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 				true);
 	}
 
-	if ((IS_EVENT(msg, data, DATA_EVT_UI_DATA_SEND)) ||
-	    (IS_EVENT(msg, data, DATA_EVT_IMPACT_DATA_SEND))) {
-
-		if (IS_ENABLED(CONFIG_LWM2M_INTEGRATION)) {
-
-			struct lwm2m_obj_path paths[CONFIG_CLOUD_CODEC_LWM2M_PATH_LIST_ENTRIES_MAX];
-
-			__ASSERT(ARRAY_SIZE(paths) ==
-				 ARRAY_SIZE(msg->module.data.data.buffer.paths),
-				 "Path object list not the same size");
-
-			for (int i = 0; i < ARRAY_SIZE(paths); i++) {
-				paths[i] = msg->module.data.data.buffer.paths[i];
-			}
-
-			err = cloud_wrap_ui_send(NULL,
-						 msg->module.data.data.buffer.valid_object_paths,
-						 true,
-						 0,
-						 paths);
-			if (err) {
-				LOG_ERR("cloud_wrap_ui_send, err: %d", err);
-			}
-
-			return;
-		}
+	if (IS_EVENT(msg, data, DATA_EVT_UI_DATA_SEND)) {
 
 		add_qos_message(msg->module.data.data.buffer.buf,
 				msg->module.data.data.buffer.len,
@@ -804,15 +731,6 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 
 	if (IS_EVENT(msg, data, DATA_EVT_CLOUD_LOCATION_DATA_SEND)) {
 
-		if (IS_ENABLED(CONFIG_LWM2M_INTEGRATION)) {
-			err = cloud_wrap_cloud_location_send(NULL, 0, true, 0);
-			if (err) {
-				LOG_ERR("cloud_wrap_cloud_location_send, err: %d", err);
-			}
-
-			return;
-		}
-
 		add_qos_message(msg->module.data.data.buffer.buf,
 				msg->module.data.data.buffer.len,
 				CLOUD_LOCATION,
@@ -821,10 +739,6 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 	}
 
 	if (IS_EVENT(msg, cloud, CLOUD_EVT_DATA_SEND_QOS)) {
-
-		if (IS_ENABLED(CONFIG_LWM2M_INTEGRATION)) {
-			return;
-		}
 
 		bool ack = qos_message_has_flag(&msg->module.cloud.data.message,
 						QOS_FLAG_RELIABILITY_ACK_REQUIRED);
@@ -838,8 +752,7 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 			err = cloud_wrap_data_send(message->buf,
 						   message->len,
 						   ack,
-						   msg->module.cloud.data.message.id,
-						   NULL);
+						   msg->module.cloud.data.message.id);
 			if (err) {
 				LOG_WRN("cloud_wrap_data_send, err: %d", err);
 			}
@@ -857,8 +770,7 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 			err = cloud_wrap_ui_send(message->buf,
 						 message->len,
 						 ack,
-						 msg->module.cloud.data.message.id,
-						 NULL);
+						 msg->module.cloud.data.message.id);
 			if (err) {
 				LOG_WRN("cloud_wrap_ui_send, err: %d", err);
 			}
@@ -897,15 +809,6 @@ static void on_sub_state_cloud_connected(struct cloud_msg_data *msg)
 						    msg->module.cloud.data.message.id);
 			if (err) {
 				LOG_WRN("cloud_wrap_state_send, err: %d", err);
-			}
-			break;
-		case MEMFAULT:
-			err = cloud_wrap_memfault_data_send(message->buf,
-							    message->len,
-							    ack,
-							    msg->module.cloud.data.message.id);
-			if (err) {
-				LOG_WRN("cloud_wrap_memfault_data_send, err: %d", err);
 			}
 			break;
 		default:
@@ -1009,18 +912,6 @@ static void on_all_states(struct cloud_msg_data *msg)
 		switch (err) {
 		case 0:
 			LOG_DBG("P-GPS request encoded successfully");
-
-			if (IS_ENABLED(CONFIG_LWM2M_INTEGRATION)) {
-				int err = cloud_wrap_pgps_request_send(NULL,
-								       0,
-								       true,
-								       0);
-				if (err) {
-					LOG_ERR("cloud_wrap_pgps_request_send, err: %d", err);
-				}
-
-				return;
-			}
 
 			add_qos_message(output.buf,
 					output.len,

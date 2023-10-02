@@ -14,7 +14,7 @@ if LOCATION_MODULE
 
 config LOCATION_MODULE_NEIGHBOR_CELLS_DATA_CONVERT_RSRP_TO_DBM
 	bool "Convert RSRP values to dBm for neighbor cell measurements"
-	default y if AWS_IOT || AZURE_IOT_HUB
+	default n
 	help
 	  If this option is enabled, RSRP values are converted to dBm before being
 	  sent out by the module with the LOCATION_MODULE_EVT_NEIGHBOR_CELLS_DATA_READY event.
@@ -23,7 +23,7 @@ config LOCATION_MODULE_NEIGHBOR_CELLS_DATA_CONVERT_RSRP_TO_DBM
 
 config LOCATION_MODULE_NEIGHBOR_CELLS_DATA_CONVERT_RSRQ_TO_DB
 	bool "Convert RSRQ values to dB for neighbor cell measurements"
-	default y if AWS_IOT || AZURE_IOT_HUB
+	default n
 	help
 	  If this option is enabled, RSRQ values are converted to dB before being
 	  sent out by the module with the LOCATION_MODULE_EVT_NEIGHBOR_CELLS_DATA_READY event.

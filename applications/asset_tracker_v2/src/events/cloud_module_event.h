@@ -40,16 +40,12 @@ enum cloud_module_event_type {
 	/** Connect to LTE.
 	 *  This event is sent out when the modem should connect to LTE (put into normal mode) post
 	 *  provisioning of server credentials.
-	 *
-	 *  Only used when building for LwM2M.
 	 */
 	CLOUD_EVT_LTE_CONNECT,
 
 	/** Disconnect from LTE.
 	 *  This event is sent out when the modem should be put into offline mode prior to
 	 *  provisioning of server credentials.
-	 *
-	 *  Only used when building for LwM2M.
 	 */
 	CLOUD_EVT_LTE_DISCONNECT,
 

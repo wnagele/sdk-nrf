@@ -14,11 +14,6 @@
 #include <zephyr/kernel.h>
 #include <stdbool.h>
 
-#if defined(CONFIG_LWM2M)
-#include <zephyr/net/lwm2m.h>
-#else
-#include "cloud/cloud_codec/lwm2m/lwm2m_dummy.h"
-#endif
 /**
  * @defgroup cloud_wrapper Cloud wrapper library
  * @{
@@ -161,12 +156,10 @@ int cloud_wrap_state_send(char *buf, size_t len, bool ack, uint32_t id);
  * @param[in] len Length of buffer.
  * @param[in] ack Flag signifying if the message should be acknowledged or not.
  * @param[in] id Message ID.
- * @param[in] path_list List of LwM2M objects to be sent.
  *
  * @return 0 on success, or a negative error code on failure.
  */
-int cloud_wrap_data_send(char *buf, size_t len, bool ack, uint32_t id,
-			 const struct lwm2m_obj_path path_list[]);
+int cloud_wrap_data_send(char *buf, size_t len, bool ack, uint32_t id);
 
 /**
  * @brief Send batched data to cloud.
@@ -187,19 +180,13 @@ int cloud_wrap_batch_send(char *buf, size_t len, bool ack, uint32_t id);
  * @param[in] len Length of buffer.
  * @param[in] ack Flag signifying if the message should be acknowledged or not.
  * @param[in] id Message ID.
- * @param[in] path_list Pointer to list of LwM2M objects to be sent.
  *
  * @return 0 on success, or a negative error code on failure.
  */
-int cloud_wrap_ui_send(char *buf, size_t len, bool ack, uint32_t id,
-		       const struct lwm2m_obj_path path_list[]);
+int cloud_wrap_ui_send(char *buf, size_t len, bool ack, uint32_t id);
 
 /**
  * @brief Send cloud location data to cloud.
- *
- * @note LwM2M builds: This function does not require passing in a list of objects, unlike other
- *		       functions in this API. The underlying LwM2M API called when calling this
- *		       function, keeps its own reference of the objects that needs to be updated.
  *
  * @param[in] buf Pointer to buffer containing data to be sent.
  * @param[in] len Length of buffer.
@@ -213,10 +200,6 @@ int cloud_wrap_cloud_location_send(char *buf, size_t len, bool ack, uint32_t id)
 /**
  * @brief Send A-GPS request to cloud.
  *
- * @note LwM2M builds: This function does not require passing in a list of objects, unlike other
- *		       functions in this API. The underlying LwM2M API called when calling this
- *		       function, keeps its own reference of the objects that needs to be updated.
- *
  * @param[in] buf Pointer to buffer containing data to be sent.
  * @param[in] len Length of buffer.
  * @param[in] ack Flag signifying if the message should be acknowledged or not.
@@ -229,10 +212,6 @@ int cloud_wrap_agps_request_send(char *buf, size_t len, bool ack, uint32_t id);
 /**
  * @brief Send P-GPS request to cloud.
  *
- * @note LwM2M builds: This function does not require passing in a list of objects, unlike other
- *		       functions in this API. The underlying LwM2M API called when calling this
- *		       function, keeps its own reference of the objects that needs to be updated.
- *
  * @param[in] buf Pointer to buffer containing data to be sent.
  * @param[in] len Length of buffer.
  * @param[in] ack Flag signifying if the message should be acknowledged or not.
@@ -241,18 +220,6 @@ int cloud_wrap_agps_request_send(char *buf, size_t len, bool ack, uint32_t id);
  * @return 0 on success, or a negative error code on failure.
  */
 int cloud_wrap_pgps_request_send(char *buf, size_t len, bool ack, uint32_t id);
-
-/**
- * @brief Send Memfault data to cloud.
- *
- * @param[in] buf Pointer to buffer containing data to be sent.
- * @param[in] len Length of buffer.
- * @param[in] ack Flag signifying if the message should be acknowledged or not.
- * @param[in] id Message ID.
- *
- * @return 0 on success, or a negative error code on failure.
- */
-int cloud_wrap_memfault_data_send(char *buf, size_t len, bool ack, uint32_t id);
 
 #ifdef __cplusplus
 }

@@ -376,23 +376,21 @@ static void data_get(void)
 		app_module_event->data_list[count++] = APP_DATA_MODEM_STATIC;
 	}
 
-	if (!app_cfg.no_data.neighbor_cell || !app_cfg.no_data.gnss || !app_cfg.no_data.wifi) {
-		app_module_event->data_list[count++] = APP_DATA_LOCATION;
+	app_module_event->data_list[count++] = APP_DATA_LOCATION;
 
-		/* Set application module timeout when location sampling is requested.
-		 * This is selected to be long enough so that most of the GNSS would
-		 * have enough time to run to get a fix. We also want it to be smaller than
-		 * the sampling interval (120s). So, 110s was selected but we take
-		 * minimum of sampling interval minus 5 (just some selected number) and 110.
-		 * And mode (active or passive) is taken into account.
-		 * If the timeout would become smaller than 5s, we want to ensure some time for
-		 * the modules so the minimum value for application module timeout is 5s.
-		 */
-		app_module_event->timeout = (app_cfg.active_mode) ?
-			MIN(app_cfg.active_wait_timeout - 5, 110) :
-			MIN(app_cfg.movement_resolution - 5, 110);
-		app_module_event->timeout = MAX(app_module_event->timeout, 5);
-	}
+	/* Set application module timeout when location sampling is requested.
+		* This is selected to be long enough so that most of the GNSS would
+		* have enough time to run to get a fix. We also want it to be smaller than
+		* the sampling interval (120s). So, 110s was selected but we take
+		* minimum of sampling interval minus 5 (just some selected number) and 110.
+		* And mode (active or passive) is taken into account.
+		* If the timeout would become smaller than 5s, we want to ensure some time for
+		* the modules so the minimum value for application module timeout is 5s.
+		*/
+	app_module_event->timeout = (app_cfg.active_mode) ?
+		MIN(app_cfg.active_wait_timeout - 5, 110) :
+		MIN(app_cfg.movement_resolution - 5, 110);
+	app_module_event->timeout = MAX(app_module_event->timeout, 5);
 
 	/* Set list count to number of data types passed in app_module_event. */
 	app_module_event->count = count;
@@ -493,10 +491,6 @@ static void on_all_events(struct app_msg_data *msg)
 
 	if (IS_EVENT(msg, data, DATA_EVT_DATA_READY)) {
 		sample_request_ongoing = false;
-	}
-
-	if (IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_IMPACT_DETECTED)) {
-		SEND_EVENT(app, APP_EVT_DATA_GET_ALL);
 	}
 }
 

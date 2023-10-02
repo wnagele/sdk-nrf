@@ -11,8 +11,6 @@
 #include <hw_id.h>
 
 #include "cJSON.h"
-#include "json_helpers.h"
-#include "json_protocol_names.h"
 #include "cloud/cloud_wrapper.h"
 
 #if defined(CONFIG_NRF_MODEM_LIB)
@@ -126,12 +124,6 @@ static int send_service_info(void)
 	};
 	struct nrf_cloud_svc_info_ui ui_info = {
 		.gnss = true,
-#if defined(CONFIG_BOARD_THINGY91_NRF9160_NS)
-		.humidity = true,
-		.air_pressure = true,
-		.air_quality = true,
-		.temperature = true,
-#endif
 		.rsrp = true,
 		.button = true
 	};
@@ -397,11 +389,8 @@ int cloud_wrap_batch_send(char *buf, size_t len, bool ack, uint32_t id)
 	return 0;
 }
 
-int cloud_wrap_ui_send(char *buf, size_t len, bool ack, uint32_t id,
-		       const struct lwm2m_obj_path path_list[])
+int cloud_wrap_ui_send(char *buf, size_t len, bool ack, uint32_t id)
 {
-	ARG_UNUSED(path_list);
-
 	int err;
 	struct nrf_cloud_tx_data msg = {
 		.data.ptr = buf,
@@ -470,10 +459,8 @@ int cloud_wrap_state_get(bool ack, uint32_t id)
 	return -ENOTSUP;
 }
 
-int cloud_wrap_data_send(char *buf, size_t len, bool ack, uint32_t id,
-			 const struct lwm2m_obj_path path_list[])
+int cloud_wrap_data_send(char *buf, size_t len, bool ack, uint32_t id)
 {
-	ARG_UNUSED(path_list);
 	/* Not supported, all data is sent to the bulk topic. */
 	return -ENOTSUP;
 }
@@ -487,11 +474,5 @@ int cloud_wrap_agps_request_send(char *buf, size_t len, bool ack, uint32_t id)
 int cloud_wrap_pgps_request_send(char *buf, size_t len, bool ack, uint32_t id)
 {
 	/* Not supported, P-GPS is requested internally via the nRF Cloud P-GPS library. */
-	return -ENOTSUP;
-}
-
-int cloud_wrap_memfault_data_send(char *buf, size_t len, bool ack, uint32_t id)
-{
-	/* Not supported */
 	return -ENOTSUP;
 }

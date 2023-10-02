@@ -11,10 +11,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-#include "ext_sensors_bsec.h"
-#endif
-
 #include "ext_sensors.h"
 
 #include <zephyr/logging/log.h>
@@ -59,22 +55,6 @@ struct env_sensor {
 	struct k_spinlock lock;
 };
 
-static struct env_sensor temp_sensor = {
-	.channel = SENSOR_CHAN_AMBIENT_TEMP,
-	.dev = DEVICE_DT_GET(DT_ALIAS(temp_sensor)),
-
-};
-
-static struct env_sensor humid_sensor = {
-	.channel = SENSOR_CHAN_HUMIDITY,
-	.dev = DEVICE_DT_GET(DT_ALIAS(humidity_sensor)),
-};
-
-static struct env_sensor press_sensor = {
-	.channel = SENSOR_CHAN_PRESS,
-	.dev = DEVICE_DT_GET(DT_ALIAS(pressure_sensor)),
-};
-
 /** Sensor struct for the low-power accelerometer */
 static struct env_sensor accel_sensor_lp = {
 	.channel = SENSOR_CHAN_ACCEL_XYZ,
@@ -90,18 +70,6 @@ static struct sensor_trigger adxl362_sensor_trigger_stationary = {
 		.chan = SENSOR_CHAN_ACCEL_XYZ,
 		.type = SENSOR_TRIG_STATIONARY
 };
-
-#if defined(CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION)
-static struct sensor_trigger adxl372_sensor_trigger = {
-	.chan = SENSOR_CHAN_ACCEL_XYZ,
-	.type = SENSOR_TRIG_THRESHOLD
-};
-/** Sensor struct for the high-G accelerometer */
-static struct env_sensor accel_sensor_hg = {
-	.channel = SENSOR_CHAN_ACCEL_XYZ,
-	.dev = DEVICE_DT_GET(DT_ALIAS(impact_sensor)),
-};
-#endif
 
 static ext_sensor_handler_t evt_handler;
 
@@ -146,44 +114,6 @@ static void accelerometer_trigger_handler(const struct device *dev,
 	}
 }
 
-#if defined(CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION)
-static void impact_trigger_handler(const struct device *dev,
-				   const struct sensor_trigger *trig)
-{
-	struct sensor_value data[ACCELEROMETER_CHANNELS];
-	struct ext_sensor_evt evt = {0};
-	int err;
-
-	switch (trig->type) {
-	case SENSOR_TRIG_THRESHOLD:
-		if (sensor_sample_fetch(dev) < 0) {
-			LOG_ERR("Sample fetch error");
-			return;
-		}
-
-		err = sensor_channel_get(dev, SENSOR_CHAN_ACCEL_XYZ, data);
-		if (err) {
-			LOG_ERR("sensor_channel_get, error: %d", err);
-			return;
-		}
-
-		evt.value = sqrt(pow(sensor_ms2_to_g(&data[0]), 2.0) +
-				 pow(sensor_ms2_to_g(&data[1]), 2.0) +
-				 pow(sensor_ms2_to_g(&data[2]), 2.0));
-
-		LOG_DBG("Detected impact of %6.2f g\n", evt.value);
-
-		if (evt.value > 0.0) {
-			evt.type = EXT_SENSOR_EVT_ACCELEROMETER_IMPACT_TRIGGER;
-			evt_handler(&evt);
-		}
-		break;
-	default:
-		LOG_ERR("Unknown trigger");
-	}
-}
-#endif
-
 int ext_sensors_init(ext_sensor_handler_t handler)
 {
 	struct ext_sensor_evt evt = {0};
@@ -195,169 +125,13 @@ int ext_sensors_init(ext_sensor_handler_t handler)
 
 	evt_handler = handler;
 
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	int err = ext_sensors_bsec_init();
-
-	if (err) {
-		LOG_ERR("ext_sensors_bsec_init, error: %d", err);
-		evt.type = EXT_SENSOR_EVT_BME680_BSEC_ERROR;
-		evt_handler(&evt);
-	}
-#else
-	if (!device_is_ready(temp_sensor.dev)) {
-		LOG_ERR("Temperature sensor device is not ready");
-		evt.type = EXT_SENSOR_EVT_TEMPERATURE_ERROR;
-		evt_handler(&evt);
-	}
-
-	if (!device_is_ready(humid_sensor.dev)) {
-		LOG_ERR("Humidity sensor device is not ready");
-		evt.type = EXT_SENSOR_EVT_HUMIDITY_ERROR;
-		evt_handler(&evt);
-	}
-
-	if (!device_is_ready(press_sensor.dev)) {
-		LOG_ERR("Pressure sensor device is not ready");
-		evt.type = EXT_SENSOR_EVT_PRESSURE_ERROR;
-		evt_handler(&evt);
-	}
-#endif /* if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC) */
-
 	if (!device_is_ready(accel_sensor_lp.dev)) {
 		LOG_ERR("Low-power accelerometer device is not ready");
 		evt.type = EXT_SENSOR_EVT_ACCELEROMETER_ERROR;
 		evt_handler(&evt);
 	}
 
-#if defined(CONFIG_EXTERNAL_SENSORS_IMPACT_DETECTION)
-	if (!device_is_ready(accel_sensor_hg.dev)) {
-		LOG_ERR("High-G accelerometer device is not ready");
-		evt.type = EXT_SENSOR_EVT_ACCELEROMETER_ERROR;
-		evt_handler(&evt);
-	} else {
-		int err = sensor_trigger_set(accel_sensor_hg.dev,
-					     &adxl372_sensor_trigger, impact_trigger_handler);
-		if (err) {
-			LOG_ERR("Could not set trigger for device %s, error: %d",
-				accel_sensor_hg.dev->name, err);
-			return err;
-		}
-	}
-#endif
 	return 0;
-}
-
-int ext_sensors_temperature_get(double *ext_temp)
-{
-	int err;
-	struct sensor_value data = {0};
-	struct ext_sensor_evt evt = {0};
-
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_temperature_get(ext_temp);
-#endif
-
-	err = sensor_sample_fetch_chan(temp_sensor.dev, SENSOR_CHAN_ALL);
-	if (err) {
-		LOG_ERR("Failed to fetch data from %s, error: %d",
-			temp_sensor.dev->name, err);
-		evt.type = EXT_SENSOR_EVT_TEMPERATURE_ERROR;
-		evt_handler(&evt);
-		return -ENODATA;
-	}
-
-	err = sensor_channel_get(temp_sensor.dev, temp_sensor.channel, &data);
-	if (err) {
-		LOG_ERR("Failed to fetch data from %s, error: %d",
-			temp_sensor.dev->name, err);
-		evt.type = EXT_SENSOR_EVT_TEMPERATURE_ERROR;
-		evt_handler(&evt);
-		return -ENODATA;
-	}
-
-	k_spinlock_key_t key = k_spin_lock(&(temp_sensor.lock));
-	*ext_temp = sensor_value_to_double(&data);
-	k_spin_unlock(&(temp_sensor.lock), key);
-
-	return 0;
-}
-
-int ext_sensors_humidity_get(double *ext_hum)
-{
-	int err;
-	struct sensor_value data = {0};
-	struct ext_sensor_evt evt = {0};
-
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_humidity_get(ext_hum);
-#endif
-
-	err = sensor_sample_fetch_chan(humid_sensor.dev, SENSOR_CHAN_ALL);
-	if (err) {
-		LOG_ERR("Failed to fetch data from %s, error: %d",
-			humid_sensor.dev->name, err);
-		evt.type = EXT_SENSOR_EVT_HUMIDITY_ERROR;
-		evt_handler(&evt);
-		return -ENODATA;
-	}
-
-	err = sensor_channel_get(humid_sensor.dev, humid_sensor.channel, &data);
-	if (err) {
-		LOG_ERR("Failed to fetch data from %s, error: %d",
-			humid_sensor.dev->name, err);
-		evt.type = EXT_SENSOR_EVT_HUMIDITY_ERROR;
-		evt_handler(&evt);
-		return -ENODATA;
-	}
-
-	k_spinlock_key_t key = k_spin_lock(&(humid_sensor.lock));
-	*ext_hum = sensor_value_to_double(&data);
-	k_spin_unlock(&(humid_sensor.lock), key);
-
-	return 0;
-}
-
-int ext_sensors_pressure_get(double *ext_press)
-{
-	int err;
-	struct sensor_value data = {0};
-	struct ext_sensor_evt evt = {0};
-
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_pressure_get(ext_press);
-#endif
-
-	err = sensor_sample_fetch_chan(press_sensor.dev, SENSOR_CHAN_ALL);
-	if (err) {
-		LOG_ERR("Failed to fetch data from %s, error: %d",
-			press_sensor.dev->name, err);
-		evt.type = EXT_SENSOR_EVT_PRESSURE_ERROR;
-		evt_handler(&evt);
-		return -ENODATA;
-	}
-
-	err = sensor_channel_get(press_sensor.dev, press_sensor.channel, &data);
-	if (err) {
-		LOG_ERR("Failed to fetch data from %s, error: %d",
-			press_sensor.dev->name, err);
-		evt.type = EXT_SENSOR_EVT_PRESSURE_ERROR;
-		evt_handler(&evt);
-		return -ENODATA;
-	}
-
-	k_spinlock_key_t key = k_spin_lock(&(press_sensor.lock));
-	*ext_press = sensor_value_to_double(&data);
-	k_spin_unlock(&(press_sensor.lock), key);
-
-	return 0;
-}
-
-int ext_sensors_air_quality_get(uint16_t *ext_bsec_air_quality)
-{
-#if defined(CONFIG_EXTERNAL_SENSORS_BME680_BSEC)
-	return ext_sensors_bsec_air_quality_get(ext_bsec_air_quality);
-#endif
-	return -ENOTSUP;
 }
 
 int ext_sensors_accelerometer_threshold_set(double threshold, bool upper)

@@ -31,19 +31,8 @@ enum ext_sensor_evt_type {
 	EXT_SENSOR_EVT_ACCELEROMETER_ACT_TRIGGER,
 	/** Event that is sent if inactivity is detected */
 	EXT_SENSOR_EVT_ACCELEROMETER_INACT_TRIGGER,
-	/** ADXL372 high-G accelerometer */
-	EXT_SENSOR_EVT_ACCELEROMETER_IMPACT_TRIGGER,
-
 	/** Event propagated when an error has occurred with any of the accelerometers. */
 	EXT_SENSOR_EVT_ACCELEROMETER_ERROR,
-	/** Event propagated when an error has occurred with the temperature sensor. */
-	EXT_SENSOR_EVT_TEMPERATURE_ERROR,
-	/** Event propagated when an error has occurred with the humidity sensor. */
-	EXT_SENSOR_EVT_HUMIDITY_ERROR,
-	/** Event propagated when an error has occurred with the pressure sensor. */
-	EXT_SENSOR_EVT_PRESSURE_ERROR,
-	/** Event propagated when an error has occurred with the Bosch BSEC library. */
-	EXT_SENSOR_EVT_BME680_BSEC_ERROR
 };
 
 /** @brief Structure containing external sensor data. */
@@ -74,49 +63,6 @@ typedef void (*ext_sensor_handler_t)(
  * @return 0 on success or negative error value on failure.
  */
 int ext_sensors_init(ext_sensor_handler_t handler);
-
-/**
- * @brief Get temperature from library.
- *
- * @param[out] temp Pointer to variable containing temperature in celcius.
- *
- * @return 0 on success or negative error value on failure.
- */
-int ext_sensors_temperature_get(double *temp);
-
-/**
- * @brief Get humidity from library.
- *
- * @param[out] humid Pointer to variable containing humidity in percentage.
- *
- * @return 0 on success or negative error value on failure.
- */
-int ext_sensors_humidity_get(double *humid);
-
-/**
- * @brief Get pressure from library.
- *
- * @param[out] press Pointer to variable containing atmospheric pressure in kilopascal.
- *
- * @return 0 on success or negative error value on failure.
- */
-int ext_sensors_pressure_get(double *press);
-
-/**
- * @brief Get air quality. Air quality calculations are only available when enabling
- *	  the Bosch BSEC library.
- *
- * @param[out] bsec_air_quality Pointer to variable containing air quality reading in
- *			        Indoor-Air-Quality (IAQ). This number is calculated by internal
- *			        algorithms in the Bosch BSEC library and is a product of multiple
- *			        readings from several sensors over time.
- *			        The IAQ value ranges from 0 (clean air) to 500
- *				(heavily polluted air)
- *
- * @return 0 on success or negative error value on failure.
- * @retval -ENOTSUP if getting air quality is not supported.
- */
-int ext_sensors_air_quality_get(uint16_t *bsec_air_quality);
 
 /**
  * @brief Set the threshold that triggers callback on accelerometer data.

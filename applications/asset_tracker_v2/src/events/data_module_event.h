@@ -17,12 +17,6 @@
 #include <app_event_manager_profiler_tracer.h>
 #include "cloud/cloud_codec/cloud_codec.h"
 
-#if defined(CONFIG_LWM2M)
-#include <zephyr/net/lwm2m.h>
-#else
-#include "cloud/cloud_codec/lwm2m/lwm2m_dummy.h"
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,54 +29,33 @@ enum data_module_event_type {
 	/** Send newly sampled data.
 	 *  The event has an associated payload of type @ref data_module_data_buffers in
 	 *  the `data.buffer` member.
-	 *
-	 *  If a non LwM2M build is used the data is heap allocated and must be freed after use by
-	 *  calling k_free() on `data.buffer.buf`.
 	 */
 	DATA_EVT_DATA_SEND,
 
 	/** Send older batched data.
 	 *  The event has an associated payload of type @ref data_module_data_buffers in
 	 *  the `data.buffer` member.
-	 *
-	 *  If a non LwM2M build is used the data is heap allocated and must be freed after use by
-	 *  calling k_free() on `data.buffer.buf`.
 	 */
 	DATA_EVT_DATA_SEND_BATCH,
 
 	/** Send UI button data.
 	 *  The event has an associated payload of type @ref data_module_data_buffers in
 	 *  the `data.buffer` member.
-	 *
-	 *  If a non LwM2M build is used the data is heap allocated and must be freed after use by
-	 *  calling k_free() on `data.buffer.buf`.
 	 */
 	DATA_EVT_UI_DATA_SEND,
 
 	/** UI button data is ready to be sent. */
 	DATA_EVT_UI_DATA_READY,
 
-	/** Impact data is ready to be sent. */
-	DATA_EVT_IMPACT_DATA_READY,
-
-	/** Send impact data, similar to DATA_EVT_UI_DATA_SEND */
-	DATA_EVT_IMPACT_DATA_SEND,
-
 	/** Send cloud location data.
 	 *  The event has an associated payload of type @ref data_module_data_buffers in
 	 *  the `data.buffer` member.
-	 *
-	 *  If a non LwM2M build is used the data is heap allocated and must be freed after use by
-	 *  calling k_free() on `data.buffer.buf`.
 	 */
 	DATA_EVT_CLOUD_LOCATION_DATA_SEND,
 
 	/** Send A-GPS request.
 	 *  The event has an associated payload of type @ref data_module_data_buffers in
 	 *  the `data.buffer` member.
-	 *
-	 *  If a non LwM2M build is used the data is heap allocated and must be freed after use by
-	 *  calling k_free() on `data.buffer.buf`.
 	 */
 	DATA_EVT_AGPS_REQUEST_DATA_SEND,
 
@@ -101,9 +74,6 @@ enum data_module_event_type {
 	/** Acknowledge the applied device configuration to cloud.
 	 *  The event has an associated payload of type @ref data_module_data_buffers in
 	 *  the `data.buffer` member.
-	 *
-	 *  If a non LwM2M build is used the data is heap allocated and must be freed after use by
-	 *  calling k_free() on `data.buffer.buf`.
 	 */
 	DATA_EVT_CONFIG_SEND,
 
@@ -128,9 +98,6 @@ enum data_module_event_type {
 struct data_module_data_buffers {
 	char *buf;
 	size_t len;
-	/** Object paths used in lwM2M. NULL terminated. */
-	struct lwm2m_obj_path paths[CONFIG_CLOUD_CODEC_LWM2M_PATH_LIST_ENTRIES_MAX];
-	uint8_t valid_object_paths;
 };
 
 /** @brief Data module event. */

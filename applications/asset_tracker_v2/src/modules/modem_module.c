@@ -15,10 +15,6 @@
 #include <modem/nrf_modem_lib.h>
 #include <modem/pdn.h>
 
-#if defined(CONFIG_MEMFAULT)
-#include <memfault/ports/zephyr/http.h>
-#endif
-
 #define MODULE modem_module
 
 #include "modules_common.h"
@@ -27,10 +23,6 @@
 #include "events/modem_module_event.h"
 #include "events/util_module_event.h"
 #include "events/cloud_module_event.h"
-
-#ifdef CONFIG_LWM2M_CARRIER
-#include <lwm2m_carrier.h>
-#endif /* CONFIG_LWM2M_CARRIER */
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(MODULE, CONFIG_MODEM_MODULE_LOG_LEVEL);
@@ -329,131 +321,6 @@ static void modem_rsrp_handler(char rsrp_value)
 		rsrp_value_latest);
 }
 
-#ifdef CONFIG_LWM2M_CARRIER
-static void print_carrier_error(const lwm2m_carrier_event_t *evt)
-{
-	const lwm2m_carrier_event_error_t *err = evt->data.error;
-	static const char *const strerr[] = {
-		[LWM2M_CARRIER_ERROR_NO_ERROR] =
-			"No error",
-		[LWM2M_CARRIER_ERROR_BOOTSTRAP] =
-			"Bootstrap error",
-		[LWM2M_CARRIER_ERROR_LTE_LINK_UP_FAIL] =
-			"Failed to connect to the LTE network",
-		[LWM2M_CARRIER_ERROR_LTE_LINK_DOWN_FAIL] =
-			"Failed to disconnect from the LTE network",
-		[LWM2M_CARRIER_ERROR_FOTA_FAIL] =
-			"Modem firmware update failed",
-		[LWM2M_CARRIER_ERROR_CONFIGURATION] =
-			"Illegal object configuration detected",
-		[LWM2M_CARRIER_ERROR_INIT] =
-			"Initialization failure",
-		[LWM2M_CARRIER_ERROR_RUN] =
-			"Configuration failure",
-	};
-
-	__ASSERT(PART_OF_ARRAY(strerr, &strerr[err->type]), "Unhandled carrier library error");
-
-	LOG_ERR("%s, reason %d\n", strerr[err->type], err->value);
-}
-
-static void print_carrier_deferred_reason(const lwm2m_carrier_event_t *evt)
-{
-	const lwm2m_carrier_event_deferred_t *def = evt->data.deferred;
-	static const char *const strdef[] = {
-		[LWM2M_CARRIER_DEFERRED_NO_REASON] =
-			"No reason given",
-		[LWM2M_CARRIER_DEFERRED_PDN_ACTIVATE] =
-			"Failed to activate PDN",
-		[LWM2M_CARRIER_DEFERRED_BOOTSTRAP_NO_ROUTE] =
-			"No route to bootstrap server",
-		[LWM2M_CARRIER_DEFERRED_BOOTSTRAP_CONNECT] =
-			"Failed to connect to bootstrap server",
-		[LWM2M_CARRIER_DEFERRED_BOOTSTRAP_SEQUENCE] =
-			"Bootstrap sequence not completed",
-		[LWM2M_CARRIER_DEFERRED_SERVER_NO_ROUTE] =
-			"No route to server",
-		[LWM2M_CARRIER_DEFERRED_SERVER_CONNECT] =
-			"Failed to connect to server",
-		[LWM2M_CARRIER_DEFERRED_SERVER_REGISTRATION] =
-			"Server registration sequence not completed",
-		[LWM2M_CARRIER_DEFERRED_SERVICE_UNAVAILABLE] =
-			"Server in maintenance mode",
-		[LWM2M_CARRIER_DEFERRED_SIM_MSISDN] =
-			"Waiting for SIM MSISDN",
-	};
-
-	__ASSERT(PART_OF_ARRAY(strdef, &strdef[def->reason]),
-		"Unhandled deferred carrier library error");
-
-	LOG_ERR("Reason: %s, timeout: %d seconds\n", strdef[def->reason], def->timeout);
-}
-
-int lwm2m_carrier_event_handler(const lwm2m_carrier_event_t *evt)
-{
-	int err = 0;
-
-	switch (evt->type) {
-	case LWM2M_CARRIER_EVENT_LTE_LINK_UP: {
-		LOG_INF("LWM2M_CARRIER_EVENT_LTE_LINK_UP");
-		SEND_EVENT(modem, MODEM_EVT_CARRIER_EVENT_LTE_LINK_UP_REQUEST);
-		break;
-	}
-	case LWM2M_CARRIER_EVENT_LTE_LINK_DOWN: {
-		LOG_INF("LWM2M_CARRIER_EVENT_LTE_LINK_DOWN");
-		SEND_EVENT(modem, MODEM_EVT_CARRIER_EVENT_LTE_LINK_DOWN_REQUEST);
-		break;
-	}
-	case LWM2M_CARRIER_EVENT_LTE_POWER_OFF:
-		LOG_INF("LWM2M_CARRIER_EVENT_LTE_POWER_OFF");
-		break;
-	case LWM2M_CARRIER_EVENT_BOOTSTRAPPED:
-		LOG_INF("LWM2M_CARRIER_EVENT_BOOTSTRAPPED");
-		break;
-	case LWM2M_CARRIER_EVENT_REGISTERED:
-		LOG_INF("LWM2M_CARRIER_EVENT_REGISTERED");
-		break;
-	case LWM2M_CARRIER_EVENT_DEFERRED:
-		LOG_INF("LWM2M_CARRIER_EVENT_DEFERRED");
-		print_carrier_deferred_reason(evt);
-		break;
-	case LWM2M_CARRIER_EVENT_FOTA_START: {
-		LOG_INF("LWM2M_CARRIER_EVENT_FOTA_START");
-		SEND_EVENT(modem, MODEM_EVT_CARRIER_FOTA_PENDING);
-		break;
-	}
-	case LWM2M_CARRIER_EVENT_FOTA_SUCCESS:
-		LOG_INF("LWM2M_CARRIER_EVENT_FOTA_SUCCESS");
-		break;
-	case LWM2M_CARRIER_EVENT_REBOOT: {
-		LOG_INF("LWM2M_CARRIER_EVENT_REBOOT");
-		SEND_EVENT(modem, MODEM_EVT_CARRIER_REBOOT_REQUEST);
-
-		/* 1 is returned here to indicate to the carrier library that
-		 * the application will handle rebooting of the system to
-		 * ensure it happens gracefully. The alternative is to
-		 * return 0 and let the library reboot at its convenience.
-		 */
-		return 1;
-	}
-	case LWM2M_CARRIER_EVENT_MODEM_INIT:
-		LOG_INF("LWM2M_CARRIER_EVENT_MODEM_INIT");
-		err = nrf_modem_lib_init();
-		break;
-	case LWM2M_CARRIER_EVENT_MODEM_SHUTDOWN:
-		LOG_INF("LWM2M_CARRIER_EVENT_MODEM_SHUTDOWN");
-		err = nrf_modem_lib_shutdown();
-		break;
-	case LWM2M_CARRIER_EVENT_ERROR: {
-		LOG_ERR("LWM2M_CARRIER_EVENT_ERROR");
-		print_carrier_error(evt);
-		break;
-	}
-	}
-	return err;
-}
-#endif /* CONFIG_LWM2M_CARRIER */
-
 
 /* Static module functions. */
 static void send_cell_update(uint32_t cell_id, uint32_t tac)
@@ -674,13 +541,6 @@ static int modem_data_init(void)
 static int setup(void)
 {
 	int err;
-
-#if IS_ENABLED(CONFIG_MEMFAULT) && !IS_ENABLED(CONFIG_MEMFAULT_NCS_PROVISION_CERTIFICATES)
-	err = memfault_zephyr_port_install_root_certs();
-	if (err) {
-		LOG_ERR("Failed to provision certificates, error: %d", err);
-	}
-#endif
 
 	/* Setup a callback for the default PDP context. */
 	err = pdn_default_ctx_cb_reg(pdn_event_handler);

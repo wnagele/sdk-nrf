@@ -13,32 +13,6 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(cloud_codec_ringbuffer, CONFIG_CLOUD_CODEC_LOG_LEVEL);
 
-void cloud_codec_populate_sensor_buffer(
-				struct cloud_data_sensors *sensor_buffer,
-				struct cloud_data_sensors *new_sensor_data,
-				int *head_sensor_buf,
-				size_t buffer_count)
-{
-	if (!IS_ENABLED(CONFIG_DATA_SENSOR_BUFFER_STORE)) {
-		return;
-	}
-
-	if (!new_sensor_data->queued) {
-		return;
-	}
-
-	/* Go to start of buffer if end is reached. */
-	*head_sensor_buf += 1;
-	if (*head_sensor_buf == buffer_count) {
-		*head_sensor_buf = 0;
-	}
-
-	sensor_buffer[*head_sensor_buf] = *new_sensor_data;
-
-	LOG_DBG("Entry: %d of %d in sensor buffer filled", *head_sensor_buf,
-		buffer_count - 1);
-}
-
 void cloud_codec_populate_ui_buffer(struct cloud_data_ui *ui_buffer,
 				   struct cloud_data_ui *new_ui_data,
 				   int *head_ui_buf,
@@ -62,27 +36,6 @@ void cloud_codec_populate_ui_buffer(struct cloud_data_ui *ui_buffer,
 
 	LOG_DBG("Entry: %d of %d in UI buffer filled", *head_ui_buf,
 		buffer_count - 1);
-}
-
-void cloud_codec_populate_impact_buffer(
-				struct cloud_data_impact *impact_buf,
-				struct cloud_data_impact *new_impact_data,
-				int *head_impact_buf,
-				size_t buffer_count)
-{
-	if (!new_impact_data->queued) {
-		return;
-	}
-
-	/* Go to start of buffer if end is reached. */
-	*head_impact_buf += 1;
-	if (*head_impact_buf == buffer_count) {
-		*head_impact_buf = 0;
-	}
-
-	impact_buf[*head_impact_buf] = *new_impact_data;
-
-	LOG_DBG("Entry: %d of %d in impact buffer filled", *head_impact_buf, buffer_count - 1);
 }
 
 void cloud_codec_populate_bat_buffer(struct cloud_data_battery *bat_buffer,

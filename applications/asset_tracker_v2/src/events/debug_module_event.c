@@ -12,8 +12,6 @@
 static char *get_evt_type_str(enum debug_module_event_type type)
 {
 	switch (type) {
-	case DEBUG_EVT_MEMFAULT_DATA_READY:
-		return "DEBUG_EVT_MEMFAULT_DATA_READY";
 	case DEBUG_EVT_EMULATOR_INITIALIZED:
 		return "DEBUG_EVT_EMULATOR_INITIALIZED";
 	case DEBUG_EVT_EMULATOR_NETWORK_CONNECTED:

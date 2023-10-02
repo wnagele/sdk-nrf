@@ -153,19 +153,6 @@ static void activity_data_send(const struct ext_sensor_evt *const acc_data)
 	APP_EVENT_SUBMIT(sensor_module_event);
 }
 
-static void impact_data_send(const struct ext_sensor_evt *const evt)
-{
-	struct sensor_module_event *sensor_module_event = new_sensor_module_event();
-
-	__ASSERT(sensor_module_event, "Not enough heap left to allocate event");
-
-	sensor_module_event->data.impact.magnitude = evt->value;
-	sensor_module_event->data.impact.timestamp = k_uptime_get();
-	sensor_module_event->type = SENSOR_EVT_MOVEMENT_IMPACT_DETECTED;
-
-	APP_EVENT_SUBMIT(sensor_module_event);
-}
-
 static void ext_sensor_handler(const struct ext_sensor_evt *const evt)
 {
 	switch (evt->type) {
@@ -175,23 +162,8 @@ static void ext_sensor_handler(const struct ext_sensor_evt *const evt)
 	case EXT_SENSOR_EVT_ACCELEROMETER_INACT_TRIGGER:
 		activity_data_send(evt);
 		break;
-	case EXT_SENSOR_EVT_ACCELEROMETER_IMPACT_TRIGGER:
-		impact_data_send(evt);
-		break;
 	case EXT_SENSOR_EVT_ACCELEROMETER_ERROR:
 		LOG_ERR("EXT_SENSOR_EVT_ACCELEROMETER_ERROR");
-		break;
-	case EXT_SENSOR_EVT_TEMPERATURE_ERROR:
-		LOG_ERR("EXT_SENSOR_EVT_TEMPERATURE_ERROR");
-		break;
-	case EXT_SENSOR_EVT_HUMIDITY_ERROR:
-		LOG_ERR("EXT_SENSOR_EVT_HUMIDITY_ERROR");
-		break;
-	case EXT_SENSOR_EVT_PRESSURE_ERROR:
-		LOG_ERR("EXT_SENSOR_EVT_PRESSURE_ERROR");
-		break;
-	case EXT_SENSOR_EVT_BME680_BSEC_ERROR:
-		LOG_ERR("EXT_SENSOR_EVT_BME680_BSEC_ERROR");
 		break;
 	default:
 		break;
@@ -277,71 +249,6 @@ static void battery_data_get(void)
 	APP_EVENT_SUBMIT(sensor_module_event);
 }
 
-static void environmental_data_get(void)
-{
-	struct sensor_module_event *sensor_module_event;
-#if defined(CONFIG_EXTERNAL_SENSORS)
-	int err;
-	double temperature = 0, humidity = 0, pressure = 0;
-	uint16_t bsec_air_quality = UINT16_MAX;
-
-	/* Request data from external sensors. */
-	err = ext_sensors_temperature_get(&temperature);
-	if (err) {
-		LOG_ERR("ext_sensors_temperature_get, error: %d", err);
-	}
-
-	err = ext_sensors_humidity_get(&humidity);
-	if (err) {
-		LOG_ERR("ext_sensors_humidity_get, error: %d", err);
-	}
-
-	err = ext_sensors_pressure_get(&pressure);
-	if (err) {
-		LOG_ERR("ext_sensors_pressure_get, error: %d", err);
-	}
-
-	err = ext_sensors_air_quality_get(&bsec_air_quality);
-	if (err && err == -ENOTSUP) {
-		/* Air quality is not available, enable the Bosch BSEC library driver.
-		 * Propagate the air quality value as -1.
-		 */
-	} else if (err) {
-		LOG_ERR("ext_sensors_bsec_air_quality_get, error: %d", err);
-	}
-
-	sensor_module_event = new_sensor_module_event();
-
-	__ASSERT(sensor_module_event, "Not enough heap left to allocate event");
-
-	sensor_module_event->data.sensors.timestamp = k_uptime_get();
-	sensor_module_event->data.sensors.temperature = temperature;
-	sensor_module_event->data.sensors.humidity = humidity;
-	sensor_module_event->data.sensors.pressure = pressure;
-	sensor_module_event->data.sensors.bsec_air_quality =
-					(bsec_air_quality == UINT16_MAX) ? -1 : bsec_air_quality;
-	sensor_module_event->type = SENSOR_EVT_ENVIRONMENTAL_DATA_READY;
-#else
-
-	/* This event must be sent even though environmental sensors are not
-	 * available on the nRF9160DK. This is because the Data module expects
-	 * responses from the different modules within a certain amount of time
-	 * after the APP_EVT_DATA_GET event has been emitted.
-	 */
-	LOG_DBG("No external sensors, submitting dummy sensor data");
-
-	/* Set this entry to false signifying that the event carries no data.
-	 * This makes sure that the entry is not stored in the circular buffer.
-	 */
-	sensor_module_event = new_sensor_module_event();
-
-	__ASSERT(sensor_module_event, "Not enough heap left to allocate event");
-
-	sensor_module_event->type = SENSOR_EVT_ENVIRONMENTAL_NOT_SUPPORTED;
-#endif
-	APP_EVENT_SUBMIT(sensor_module_event);
-}
-
 static int setup(void)
 {
 #if defined(CONFIG_EXTERNAL_SENSORS)
@@ -354,18 +261,6 @@ static int setup(void)
 	}
 #endif
 	return 0;
-}
-
-static bool environmental_data_requested(enum app_module_data_type *data_list,
-					 size_t count)
-{
-	for (size_t i = 0; i < count; i++) {
-		if (data_list[i] == APP_DATA_ENVIRONMENTAL) {
-			return true;
-		}
-	}
-
-	return false;
 }
 
 static bool battery_data_requested(enum app_module_data_type *data_list,
@@ -397,11 +292,6 @@ static void on_state_running(struct sensor_msg_data *msg)
 	}
 
 	if (IS_EVENT(msg, app, APP_EVT_DATA_GET)) {
-		if (environmental_data_requested(msg->module.app.data_list,
-						 msg->module.app.count)) {
-			environmental_data_get();
-		}
-
 		if (battery_data_requested(msg->module.app.data_list, msg->module.app.count)) {
 			battery_data_get();
 		}

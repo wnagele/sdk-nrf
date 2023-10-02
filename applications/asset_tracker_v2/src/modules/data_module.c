@@ -65,9 +65,7 @@ static enum state_type {
  * the buffers, and empty the buffers in batches upon a reconnect.
  */
 static struct cloud_data_gnss gnss_buf[CONFIG_DATA_GNSS_BUFFER_COUNT];
-static struct cloud_data_sensors sensors_buf[CONFIG_DATA_SENSOR_BUFFER_COUNT];
 static struct cloud_data_ui ui_buf[CONFIG_DATA_UI_BUFFER_COUNT];
-static struct cloud_data_impact impact_buf[CONFIG_DATA_IMPACT_BUFFER_COUNT];
 static struct cloud_data_battery bat_buf[CONFIG_DATA_BATTERY_BUFFER_COUNT];
 static struct cloud_data_modem_dynamic modem_dyn_buf[CONFIG_DATA_MODEM_DYNAMIC_BUFFER_COUNT];
 static struct cloud_data_cloud_location cloud_location;
@@ -83,10 +81,8 @@ static struct cloud_data_modem_static modem_stat;
 
 /* Head of ringbuffers. */
 static int head_gnss_buf;
-static int head_sensor_buf;
 static int head_modem_dyn_buf;
 static int head_ui_buf;
-static int head_impact_buf;
 static int head_bat_buf;
 
 static K_SEM_DEFINE(config_load_sem, 0, 1);
@@ -101,8 +97,6 @@ static struct cloud_data_cfg current_cfg = {
 	.accelerometer_activity_threshold	= CONFIG_DATA_ACCELEROMETER_ACT_THRESHOLD,
 	.accelerometer_inactivity_threshold	= CONFIG_DATA_ACCELEROMETER_INACT_THRESHOLD,
 	.accelerometer_inactivity_timeout	= CONFIG_DATA_ACCELEROMETER_INACT_TIMEOUT_SECONDS,
-	.no_data.gnss		 = !IS_ENABLED(CONFIG_DATA_SAMPLE_GNSS_DEFAULT),
-	.no_data.neighbor_cell	 = !IS_ENABLED(CONFIG_DATA_SAMPLE_NEIGHBOR_CELLS_DEFAULT)
 };
 
 static struct k_work_delayable data_send_work;
@@ -482,24 +476,6 @@ static void config_print_all(void)
 		 current_cfg.accelerometer_inactivity_threshold);
 	LOG_DBG("Accelerometer inact timeout: %.2f",
 		 current_cfg.accelerometer_inactivity_timeout);
-
-	if (!current_cfg.no_data.neighbor_cell) {
-		LOG_DBG("Requesting of neighbor cell data is enabled");
-	} else {
-		LOG_DBG("Requesting of neighbor cell data is disabled");
-	}
-
-	if (!current_cfg.no_data.gnss) {
-		LOG_DBG("Requesting of GNSS data is enabled");
-	} else {
-		LOG_DBG("Requesting of GNSS data is disabled");
-	}
-
-	if (!current_cfg.no_data.wifi) {
-		LOG_DBG("Requesting of Wi-Fi data is enabled");
-	} else {
-		LOG_DBG("Requesting of Wi-Fi data is disabled");
-	}
 }
 
 static void config_distribute(enum data_module_event_type type)
@@ -523,18 +499,8 @@ static void data_send(enum data_module_event_type event,
 
 	module_event->type = event;
 
-	BUILD_ASSERT((sizeof(data->paths) == sizeof(module_event->data.buffer.paths)),
-			"Size of the object path list does not match");
-	BUILD_ASSERT((sizeof(data->paths[0]) == sizeof(module_event->data.buffer.paths[0])),
-			"Size of an entry in the object path list does not match");
-
-	if (IS_ENABLED(CONFIG_CLOUD_CODEC_LWM2M)) {
-		memcpy(module_event->data.buffer.paths, data->paths, sizeof(data->paths));
-		module_event->data.buffer.valid_object_paths = data->valid_object_paths;
-	} else {
-		module_event->data.buffer.buf = data->buf;
-		module_event->data.buffer.len = data->len;
-	}
+	module_event->data.buffer.buf = data->buf;
+	module_event->data.buffer.len = data->len;
 
 	APP_EVENT_SUBMIT(module_event);
 
@@ -605,11 +571,9 @@ static void data_encode(void)
 	if (grant_send(GENERIC, &coneval, override)) {
 		err = cloud_codec_encode_data(&codec,
 					      &gnss_buf[head_gnss_buf],
-					      &sensors_buf[head_sensor_buf],
 					      &modem_stat,
 					      &modem_dyn_buf[head_modem_dyn_buf],
 					      &ui_buf[head_ui_buf],
-					      &impact_buf[head_impact_buf],
 					      &bat_buf[head_bat_buf]);
 		switch (err) {
 		case 0:
@@ -635,18 +599,14 @@ static void data_encode(void)
 	if (grant_send(BATCH, &coneval, override)) {
 		err = cloud_codec_encode_batch_data(&codec,
 						    gnss_buf,
-						    sensors_buf,
 						    &modem_stat,
 						    modem_dyn_buf,
 						    ui_buf,
-						    impact_buf,
 						    bat_buf,
 						    ARRAY_SIZE(gnss_buf),
-						    ARRAY_SIZE(sensors_buf),
 						    MODEM_STATIC_ARRAY_SIZE,
 						    ARRAY_SIZE(modem_dyn_buf),
 						    ARRAY_SIZE(ui_buf),
-						    ARRAY_SIZE(impact_buf),
 						    ARRAY_SIZE(bat_buf));
 		switch (err) {
 		case 0:
@@ -813,31 +773,6 @@ static void data_ui_send(void)
 	data_send(DATA_EVT_UI_DATA_SEND, &codec);
 }
 
-static void data_impact_send(void)
-{
-	int err;
-	struct cloud_codec_data codec = {0};
-
-	if (!date_time_is_valid()) {
-		return;
-	}
-
-	err = cloud_codec_encode_impact_data(&codec, &impact_buf[head_impact_buf]);
-	if (err == -ENODATA) {
-		LOG_DBG("No new impact data to encode, error: %d", err);
-		return;
-	} else if (err == -ENOTSUP) {
-		LOG_WRN("Encoding of impact data is not supported, error: %d", err);
-		return;
-	} else if (err) {
-		LOG_ERR("Encoding impact data failed, error: %d", err);
-		SEND_ERROR(data, DATA_EVT_ERROR, err);
-		return;
-	}
-
-	data_send(DATA_EVT_IMPACT_DATA_SEND, &codec);
-}
-
 static void requested_data_clear(void)
 {
 	recv_req_data_count = 0;
@@ -903,42 +838,6 @@ static void new_config_handle(struct cloud_data_cfg *new_config)
 			LOG_DBG("New Device mode: Active");
 		} else {
 			LOG_DBG("New Device mode: Passive");
-		}
-
-		config_change = true;
-	}
-
-	if (current_cfg.no_data.gnss != new_config->no_data.gnss) {
-		current_cfg.no_data.gnss = new_config->no_data.gnss;
-
-		if (!current_cfg.no_data.gnss) {
-			LOG_DBG("Requesting of GNSS data is enabled");
-		} else {
-			LOG_DBG("Requesting of GNSS data is disabled");
-		}
-
-		config_change = true;
-	}
-
-	if (current_cfg.no_data.neighbor_cell != new_config->no_data.neighbor_cell) {
-		current_cfg.no_data.neighbor_cell = new_config->no_data.neighbor_cell;
-
-		if (!current_cfg.no_data.neighbor_cell) {
-			LOG_DBG("Requesting of neighbor cell data is enabled");
-		} else {
-			LOG_DBG("Requesting of neighbor cell data is disabled");
-		}
-
-		config_change = true;
-	}
-
-	if (current_cfg.no_data.wifi != new_config->no_data.wifi) {
-		current_cfg.no_data.wifi = new_config->no_data.wifi;
-
-		if (!current_cfg.no_data.wifi) {
-			LOG_DBG("Requesting of Wi-Fi data is enabled");
-		} else {
-			LOG_DBG("Requesting of Wi-Fi data is disabled");
 		}
 
 		config_change = true;
@@ -1037,11 +936,6 @@ static void new_config_handle(struct cloud_data_cfg *new_config)
 	 * between reported parameters in the cloud-side state and parameters reported by the
 	 * device.
 	 */
-
-	/* LwM2M doesn't require reporting of the current configuration back to cloud. */
-	if (IS_ENABLED(CONFIG_LWM2M_INTEGRATION)) {
-		return;
-	}
 
 	LOG_DBG("Acknowledge currently applied configuration back to cloud");
 	config_send();
@@ -1158,11 +1052,6 @@ static void on_cloud_state_connected(struct data_msg_data *msg)
 		return;
 	}
 
-	if (IS_EVENT(msg, data, DATA_EVT_IMPACT_DATA_READY)) {
-		data_impact_send();
-		return;
-	}
-
 	if (IS_EVENT(msg, cloud, CLOUD_EVT_DISCONNECTED)) {
 		state_set(STATE_CLOUD_DISCONNECTED);
 		return;
@@ -1200,13 +1089,7 @@ static void on_all_states(struct data_msg_data *msg)
 			.accelerometer_inactivity_threshold =
 				msg->module.cloud.data.config.accelerometer_inactivity_threshold,
 			.accelerometer_inactivity_timeout =
-				msg->module.cloud.data.config.accelerometer_inactivity_timeout,
-			.no_data.gnss =
-				msg->module.cloud.data.config.no_data.gnss,
-			.no_data.neighbor_cell =
-				msg->module.cloud.data.config.no_data.neighbor_cell,
-			.no_data.wifi =
-				msg->module.cloud.data.config.no_data.wifi
+				msg->module.cloud.data.config.accelerometer_inactivity_timeout
 		};
 
 		new_config_handle(&new);
@@ -1348,42 +1231,6 @@ static void on_all_states(struct data_msg_data *msg)
 
 	if (IS_EVENT(msg, sensor, SENSOR_EVT_FUEL_GAUGE_NOT_SUPPORTED)) {
 		requested_data_status_set(APP_DATA_BATTERY);
-	}
-
-	if (IS_EVENT(msg, sensor, SENSOR_EVT_ENVIRONMENTAL_DATA_READY)) {
-		struct cloud_data_sensors new_sensor_data = {
-			.temperature = msg->module.sensor.data.sensors.temperature,
-			.humidity = msg->module.sensor.data.sensors.humidity,
-			.pressure = msg->module.sensor.data.sensors.pressure,
-			.bsec_air_quality = msg->module.sensor.data.sensors.bsec_air_quality,
-			.env_ts = msg->module.sensor.data.sensors.timestamp,
-			.queued = true
-		};
-
-		cloud_codec_populate_sensor_buffer(sensors_buf,
-						   &new_sensor_data,
-						   &head_sensor_buf,
-						   ARRAY_SIZE(sensors_buf));
-
-		requested_data_status_set(APP_DATA_ENVIRONMENTAL);
-	}
-
-	if (IS_EVENT(msg, sensor, SENSOR_EVT_ENVIRONMENTAL_NOT_SUPPORTED)) {
-		requested_data_status_set(APP_DATA_ENVIRONMENTAL);
-	}
-
-	if (IS_EVENT(msg, sensor, SENSOR_EVT_MOVEMENT_IMPACT_DETECTED)) {
-		struct cloud_data_impact new_impact_data = {
-			.magnitude = msg->module.sensor.data.impact.magnitude,
-			.ts = msg->module.sensor.data.impact.timestamp,
-			.queued = true
-		};
-
-		cloud_codec_populate_impact_buffer(impact_buf, &new_impact_data,
-						   &head_impact_buf,
-						   ARRAY_SIZE(impact_buf));
-		SEND_EVENT(data, DATA_EVT_IMPACT_DATA_READY);
-		return;
 	}
 
 	if (IS_EVENT(msg, location, LOCATION_MODULE_EVT_GNSS_DATA_READY)) {

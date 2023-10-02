@@ -34,19 +34,6 @@ enum sensor_module_event_type {
 	 */
 	SENSOR_EVT_MOVEMENT_INACTIVITY_DETECTED,
 
-	/** Impact detected.
-	 *  Payload is of type @ref sensor_module_data (impact).
-	 */
-	SENSOR_EVT_MOVEMENT_IMPACT_DETECTED,
-
-	/** Environmental sensors have been sampled.
-	 *  Payload is of type @ref sensor_module_data (sensors).
-	 */
-	SENSOR_EVT_ENVIRONMENTAL_DATA_READY,
-
-	/** Environmental sensors are not supported on the current board. */
-	SENSOR_EVT_ENVIRONMENTAL_NOT_SUPPORTED,
-
 	/** Battery fuel gauge data has been sampled.
 	 *  Payload is of type @ref sensor_module_data (bat).
 	 */
@@ -66,36 +53,12 @@ enum sensor_module_event_type {
 	SENSOR_EVT_ERROR
 };
 
-/** @brief Structure used to provide environmental data. */
-struct sensor_module_data {
-	/** Uptime when the data was sampled. */
-	int64_t timestamp;
-	/** Temperature in Celsius degrees. */
-	double temperature;
-	/** Humidity in percentage. */
-	double humidity;
-	/** Atmospheric pressure in kilopascal. */
-	double pressure;
-	/** BSEC air quality in Indoor-Air-Quality (IAQ) index.
-	 *  If -1, the value is not provided.
-	 */
-	int bsec_air_quality;
-};
-
 /** @brief Structure used to provide acceleration data. */
 struct sensor_module_accel_data {
 	/** Uptime when the data was sampled. */
 	int64_t timestamp;
 	/** Acceleration in X, Y and Z planes in m/s2. */
 	double values[ACCELEROMETER_AXIS_COUNT];
-};
-
-/** @brief Structure used to provide impact data. */
-struct sensor_module_impact_data {
-	/** Uptime when the data was sampled. */
-	int64_t timestamp;
-	/** Acceleration on impact, measured in G. */
-	double magnitude;
 };
 
 /** @brief Structure used to provide battery level. */
@@ -113,12 +76,8 @@ struct sensor_module_event {
 	/** Sensor module event type. */
 	enum sensor_module_event_type type;
 	union {
-		/** Variable that contains sensor readings. */
-		struct sensor_module_data sensors;
 		/** Variable that contains acceleration data. */
 		struct sensor_module_accel_data accel;
-		/** Variable that contains impact data. */
-		struct sensor_module_impact_data impact;
 		/** Variable that contains battery level data. */
 		struct sensor_module_batt_lvl_data bat;
 		/** Module ID, used when acknowledging shutdown requests. */

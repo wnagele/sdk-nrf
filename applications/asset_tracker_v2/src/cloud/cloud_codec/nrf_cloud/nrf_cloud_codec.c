@@ -25,14 +25,12 @@ LOG_MODULE_REGISTER(cloud_codec, CONFIG_CLOUD_CODEC_LOG_LEVEL);
 /* Data types that are supported in batch messages. */
 enum batch_data_type {
 	GNSS,
-	ENVIRONMENTALS,
 	BUTTON,
 	/* Only dynamic modem data is handled here. Static modem data is handled
 	 * in the nrf_cloud library; see CONFIG_NRF_CLOUD_SEND_DEVICE_STATUS.
 	 */
 	MODEM_DYNAMIC,
 	BATTERY,
-	IMPACT,
 };
 
 /* Function that checks the version number of the incoming message and determines if it has already
@@ -346,54 +344,6 @@ static int config_add(cJSON *parent, struct cloud_data_cfg *data, const char *ob
 		goto exit;
 	}
 
-	cJSON *nod_list = cJSON_CreateArray();
-
-	if (nod_list == NULL) {
-		err = -ENOMEM;
-		goto exit;
-	}
-
-	/* If a flag in the no_data structure is set to true the corresponding JSON entry is
-	 * added to the no data array configuration.
-	 */
-	if (data->no_data.gnss) {
-		cJSON *gnss_str = cJSON_CreateString(CONFIG_NO_DATA_LIST_GNSS);
-
-		if (gnss_str == NULL) {
-			cJSON_Delete(nod_list);
-			err = -ENOMEM;
-			goto exit;
-		}
-
-		json_add_obj_array(nod_list, gnss_str);
-	}
-
-	if (data->no_data.neighbor_cell) {
-		cJSON *ncell_str = cJSON_CreateString(CONFIG_NO_DATA_LIST_NEIGHBOR_CELL);
-
-		if (ncell_str == NULL) {
-			cJSON_Delete(nod_list);
-			err = -ENOMEM;
-			goto exit;
-		}
-
-		json_add_obj_array(nod_list, ncell_str);
-	}
-
-	if (data->no_data.wifi) {
-		cJSON *wifi_str = cJSON_CreateString(CONFIG_NO_DATA_LIST_WIFI);
-
-		if (wifi_str == NULL) {
-			cJSON_Delete(nod_list);
-			err = -ENOMEM;
-			goto exit;
-		}
-
-		json_add_obj_array(nod_list, wifi_str);
-	}
-
-	/* If there are no flag set in the no_data structure, an empty array is encoded. */
-	json_add_obj(config_obj, CONFIG_NO_DATA_LIST, nod_list);
 	json_add_obj(parent, object_label, config_obj);
 
 	return 0;
@@ -413,7 +363,6 @@ static void config_get(cJSON *parent, struct cloud_data_cfg *data)
 	cJSON *acc_act_thres = cJSON_GetObjectItem(parent, CONFIG_ACC_ACT_THRESHOLD);
 	cJSON *acc_inact_thres = cJSON_GetObjectItem(parent, CONFIG_ACC_INACT_THRESHOLD);
 	cJSON *acc_inact_timeout = cJSON_GetObjectItem(parent, CONFIG_ACC_INACT_TIMEOUT);
-	cJSON *nod_list = cJSON_GetObjectItem(parent, CONFIG_NO_DATA_LIST);
 
 	if (location_timeout != NULL) {
 		data->location_timeout = location_timeout->valueint;
@@ -446,36 +395,6 @@ static void config_get(cJSON *parent, struct cloud_data_cfg *data)
 	if (acc_inact_timeout != NULL) {
 		data->accelerometer_inactivity_timeout = acc_inact_timeout->valuedouble;
 	}
-
-	if (nod_list != NULL && cJSON_IsArray(nod_list)) {
-		cJSON *item;
-		bool gnss_found = false;
-		bool ncell_found = false;
-		bool wifi_found = false;
-
-		for (int i = 0; i < cJSON_GetArraySize(nod_list); i++) {
-			item = cJSON_GetArrayItem(nod_list, i);
-
-			if (strcmp(item->valuestring, CONFIG_NO_DATA_LIST_GNSS) == 0) {
-				gnss_found = true;
-			}
-
-			if (strcmp(item->valuestring, CONFIG_NO_DATA_LIST_NEIGHBOR_CELL) == 0) {
-				ncell_found = true;
-			}
-
-			if (strcmp(item->valuestring, CONFIG_NO_DATA_LIST_WIFI) == 0) {
-				wifi_found = true;
-			}
-		}
-
-		/* If a supported entry is present in the no data list we set the corresponding flag
-		 * to true. Signifying that no data is to be sampled for that data type.
-		 */
-		data->no_data.gnss = gnss_found;
-		data->no_data.neighbor_cell = ncell_found;
-		data->no_data.wifi = wifi_found;
-	}
 }
 
 static int add_batch_data(cJSON *array, enum batch_data_type type, void *buf, size_t buf_count)
@@ -498,110 +417,6 @@ static int add_batch_data(cJSON *array, enum batch_data_type type, void *buf, si
 			data[i].queued = false;
 			break;
 		}
-		case ENVIRONMENTALS: {
-			int err, len;
-			char humidity[10];
-			char temperature[10];
-			char pressure[10];
-			char bsec_air_quality[4];
-			struct cloud_data_sensors *data = (struct cloud_data_sensors *)buf;
-
-			if (data[i].queued == false) {
-				break;
-			}
-
-			err = date_time_uptime_to_unix_time_ms(&data[i].env_ts);
-			if (err) {
-				LOG_ERR("date_time_uptime_to_unix_time_ms, error: %d", err);
-				return -EOVERFLOW;
-			}
-
-			len = snprintk(humidity, sizeof(humidity), "%.2f",
-				       data[i].humidity);
-			if ((len < 0) || (len >= sizeof(humidity))) {
-				LOG_ERR("Cannot convert humidity to string, buffer too small");
-			}
-
-			len = snprintk(temperature, sizeof(temperature), "%.2f",
-				       data[i].temperature);
-			if ((len < 0) || (len >= sizeof(temperature))) {
-				LOG_ERR("Cannot convert temperature to string, buffer too small");
-			}
-
-			len = snprintk(pressure, sizeof(pressure), "%.2f",
-				       data[i].pressure);
-			if ((len < 0) || (len >= sizeof(pressure))) {
-				LOG_ERR("Cannot convert pressure to string, buffer too small");
-			}
-
-			if (data[i].bsec_air_quality >= 0) {
-				len = snprintk(bsec_air_quality, sizeof(bsec_air_quality), "%d",
-					data[i].bsec_air_quality);
-				if ((len < 0) || (len >= sizeof(bsec_air_quality))) {
-					LOG_ERR("Cannot convert BSEC air quality to string, "
-						"buffer too small");
-				}
-
-				err = add_data(array, NULL, APP_ID_AIR_QUAL, bsec_air_quality,
-					       &data[i].env_ts, data[i].queued, NULL, false);
-				if (err && err != -ENODATA) {
-					return err;
-				}
-			}
-
-			err = add_data(array, NULL, APP_ID_HUMIDITY, humidity,
-				       &data[i].env_ts, data[i].queued, NULL, false);
-			if (err && err != -ENODATA) {
-				return err;
-			}
-
-			err = add_data(array, NULL, APP_ID_TEMPERATURE, temperature,
-				       &data[i].env_ts, data[i].queued, NULL, false);
-			if (err && err != -ENODATA) {
-				return err;
-			}
-
-			err =  add_data(array, NULL, APP_ID_AIR_PRESS, pressure,
-					&data[i].env_ts, data[i].queued, NULL, false);
-			if (err && err != -ENODATA) {
-				return err;
-			}
-
-			data[i].queued = false;
-			break;
-		}
-		case IMPACT: {
-			int err, len;
-			char magnitude[10];
-			struct cloud_data_impact *data = (struct cloud_data_impact *)buf;
-
-			if (data[i].queued == false) {
-				break;
-			}
-
-			err = date_time_uptime_to_unix_time_ms(&data[i].ts);
-			if (err) {
-				LOG_ERR("date_time_uptime_to_unix_time_ms, error: %d", err);
-				return -EOVERFLOW;
-			}
-
-			len = snprintk(magnitude, sizeof(magnitude), "%.2f",
-				       data[i].magnitude);
-			if ((len < 0) || (len >= sizeof(magnitude))) {
-				LOG_ERR("Cannot convert magnitude to string, buffer too small");
-				return -ERANGE;
-			}
-
-			err = add_data(array, NULL, APP_ID_IMPACT, magnitude,
-				       &data[i].ts, data[i].queued, NULL, false);
-			if (err && err != -ENODATA) {
-				return err;
-			}
-
-			data[i].queued = false;
-			break;
-		}
-
 		case BUTTON: {
 			int err, len;
 			char button[2];
@@ -902,11 +717,9 @@ exit:
 
 int cloud_codec_encode_data(struct cloud_codec_data *output,
 			    struct cloud_data_gnss *gnss_buf,
-			    struct cloud_data_sensors *sensor_buf,
 			    struct cloud_data_modem_static *modem_stat_buf,
 			    struct cloud_data_modem_dynamic *modem_dyn_buf,
 			    struct cloud_data_ui *ui_buf,
-			    struct cloud_data_impact *impact_buf,
 			    struct cloud_data_battery *bat_buf)
 {
 	/* Encoding of the latest buffer entries is not supported.
@@ -976,79 +789,16 @@ exit:
 	return err;
 }
 
-int cloud_codec_encode_impact_data(struct cloud_codec_data *output,
-				   struct cloud_data_impact *impact_buf)
-{
-	int err, len;
-	char *buffer;
-	cJSON *root_obj = NULL;
-	char magnitude[10];
-
-	if (!impact_buf->queued) {
-		err = -ENODATA;
-		goto exit;
-	}
-
-	root_obj = cJSON_CreateObject();
-	if (root_obj == NULL) {
-		return -ENOMEM;
-	}
-
-	len = snprintk(magnitude, sizeof(magnitude), "%.2f", impact_buf->magnitude);
-	if ((len < 0) || (len >= sizeof(magnitude))) {
-		LOG_ERR("Cannot convert magnitude to string, buffer too small");
-		err = -ERANGE;
-		goto exit;
-	}
-
-	err = json_add_str(root_obj, DATA_TYPE, magnitude);
-	if (err) {
-		LOG_ERR("Encoding error: %d returned at %s:%d", err, __FILE__, __LINE__);
-		goto exit;
-	}
-
-	err = add_meta_data(root_obj, APP_ID_IMPACT, &impact_buf->ts, true);
-	if (err) {
-		LOG_ERR("Encoding error: %d returned at %s:%d", err, __FILE__, __LINE__);
-		goto exit;
-	}
-
-	buffer = cJSON_PrintUnformatted(root_obj);
-	if (buffer == NULL) {
-		LOG_ERR("Failed to allocate memory for JSON string");
-
-		err = -ENOMEM;
-		goto exit;
-	}
-
-	impact_buf->queued = false;
-
-	if (IS_ENABLED(CONFIG_CLOUD_CODEC_LOG_LEVEL_DBG)) {
-		json_print_obj("Encoded message:\n", root_obj);
-	}
-
-	output->buf = buffer;
-	output->len = strlen(buffer);
-
-exit:
-	cJSON_Delete(root_obj);
-	return err;
-}
-
 int cloud_codec_encode_batch_data(struct cloud_codec_data *output,
 				  struct cloud_data_gnss *gnss_buf,
-				  struct cloud_data_sensors *sensor_buf,
 				  struct cloud_data_modem_static *modem_stat_buf,
 				  struct cloud_data_modem_dynamic *modem_dyn_buf,
 				  struct cloud_data_ui *ui_buf,
-				  struct cloud_data_impact *impact_buf,
 				  struct cloud_data_battery *bat_buf,
 				  size_t gnss_buf_count,
-				  size_t sensor_buf_count,
 				  size_t modem_stat_buf_count,
 				  size_t modem_dyn_buf_count,
 				  size_t ui_buf_count,
-				  size_t impact_buf_count,
 				  size_t bat_buf_count)
 {
 	ARG_UNUSED(modem_stat_buf);
@@ -1068,19 +818,7 @@ int cloud_codec_encode_batch_data(struct cloud_codec_data *output,
 		goto exit;
 	}
 
-	err = add_batch_data(root_array, ENVIRONMENTALS, sensor_buf, sensor_buf_count);
-	if (err) {
-		LOG_ERR("Failed adding environmental data to array, error: %d", err);
-		goto exit;
-	}
-
 	err = add_batch_data(root_array, BUTTON, ui_buf, ui_buf_count);
-	if (err) {
-		LOG_ERR("Failed adding button data to array, error: %d", err);
-		goto exit;
-	}
-
-	err = add_batch_data(root_array, IMPACT, impact_buf, impact_buf_count);
 	if (err) {
 		LOG_ERR("Failed adding button data to array, error: %d", err);
 		goto exit;

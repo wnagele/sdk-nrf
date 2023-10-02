@@ -231,44 +231,11 @@ static void search_start(void)
 {
 	int err;
 	struct location_config config;
-	int methods_count = 0;
-	struct location_method_config methods_updated[CONFIG_LOCATION_METHODS_LIST_SIZE] = { 0 };
-
-	if (copy_cfg.no_data.neighbor_cell && copy_cfg.no_data.gnss && copy_cfg.no_data.wifi) {
-		SEND_EVENT(location, LOCATION_MODULE_EVT_DATA_NOT_READY);
-		LOG_ERR("All GNSS, cellular and Wi-Fi are configured off");
-		return;
-	}
 
 	/* Set default location configuration configured at compile time */
 	location_config_defaults_set(&config, 0, NULL);
 
 	config.timeout = copy_cfg.location_timeout * MSEC_PER_SEC;
-
-	/* If any method type has been disabled, update the method list by using those methods
-	 * that are enabled
-	 */
-	if (copy_cfg.no_data.neighbor_cell || copy_cfg.no_data.gnss || copy_cfg.no_data.wifi) {
-		for (int i = 0; i < config.methods_count; i++) {
-			/* Use methods that are not disabled at run-time in no_data configuration */
-			if ((config.methods[i].method == LOCATION_METHOD_GNSS &&
-			     !copy_cfg.no_data.gnss) ||
-			    (config.methods[i].method == LOCATION_METHOD_WIFI &&
-			     !copy_cfg.no_data.wifi) ||
-			    (config.methods[i].method == LOCATION_METHOD_CELLULAR &&
-			     !copy_cfg.no_data.neighbor_cell)) {
-				memcpy(&methods_updated[methods_count],
-				       &config.methods[i],
-				       sizeof(struct location_method_config));
-				methods_count++;
-			}
-		}
-
-		config.methods_count = methods_count;
-		memcpy(config.methods,
-		       methods_updated,
-		       CONFIG_LOCATION_METHODS_LIST_SIZE * sizeof(struct location_method_config));
-	}
 
 	LOG_DBG("Requesting location...");
 
